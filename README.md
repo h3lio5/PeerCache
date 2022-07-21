@@ -1,1 +1,1 @@
-# libp2p-messager
+# Rusty Messenger
