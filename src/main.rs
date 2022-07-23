@@ -1,10 +1,8 @@
-use futures::task;
 use libp2p::{
     core::upgrade,
     floodsub::{Floodsub, FloodsubEvent, Topic},
     futures::StreamExt,
     identity,
-    kad::{store::MemoryStore, Kademlia},
     mdns::{Mdns, MdnsConfig, MdnsEvent},
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
@@ -16,7 +14,7 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use tokio::{io::AsyncBufReadExt, sync::mpsc};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 type NFTInfoList = Vec<NFTInfo>;
 
@@ -181,7 +179,7 @@ async fn create_new_nft_info(
 }
 
 fn read_local_nft_info() -> &'static mut NFTInfoList {
-    // DANGEROUS; have to come up with a better solution.
+    // DANGEROUS and may cause errors in multithreaded environments; have to come up with a better solution.
     return unsafe { &mut NFT_STORE };
 }
 
