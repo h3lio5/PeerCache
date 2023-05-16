@@ -1,5 +1,5 @@
 # PeerCache
-Developed PeerCache, a distributed key-value data store built using Rust and leveraging libp2p and tokio
+PeerCache is a distributed key-value data store built using Rust and leveraging libp2p and tokio
 libraries. Used the FloodSub protocol for efficient retrieval of stored messages across a decentralized network
 of nodes. The code is written to store "NFT" metadata with predefined fields (I wanted to get the implementation running quickly, so I made the data type concrete) but can be easily adapted to store any kind of data with minor modification to the code. 
 
