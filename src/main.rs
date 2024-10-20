@@ -6,19 +6,19 @@ use libp2p::{
     mdns::{Mdns, MdnsConfig, MdnsEvent},
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
-    swarm::{NetworkBehaviourEventProcess, Swarm, SwarmBuilder, SwarmEvent},
+    swarm::{NetworkBehaviourEventProcess, Swarm, SwarmBuilder},
     tcp::TokioTcpConfig,
     NetworkBehaviour, PeerId, Transport,
 };
 use log::{error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::{collections::HashSet, ptr::addr_of_mut};
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 type NFTInfoList = Vec<NFTInfo>;
 
-static KEYS: Lazy<identity::Keypair> = Lazy::new(|| identity::Keypair::generate_ed25519());
+static KEYS: Lazy<identity::Keypair> = Lazy::new(identity::Keypair::generate_ed25519);
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("nft_info"));
 static mut NFT_STORE: NFTInfoList = Vec::new();
@@ -33,7 +33,7 @@ struct NFTInfo {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ListMode {
-    ALL,
+    All,
     Collection(String),
 }
 
@@ -73,7 +73,7 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for NFTInfoBehaviour {
                     }
                 } else if let Ok(ref req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                     match &req.mode {
-                        ListMode::ALL => {
+                        ListMode::All => {
                             info!("Received ALL req: {:?} from {:?}", req, msg.source);
                             respond_with_all_nft_info(
                                 self.response_sender.clone(),
@@ -91,7 +91,8 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for NFTInfoBehaviour {
                     }
                 }
             }
-            _ => (),
+            FloodsubEvent::Subscribed { peer_id: _, topic: _ } => todo!(),
+            FloodsubEvent::Unsubscribed { peer_id: _, topic: _ } => todo!(),
         }
     }
 }
@@ -108,7 +109,7 @@ fn respond_with_collection_nft_info(
             .filter(|r| r.collection_name.eq_ignore_ascii_case(&collection_name))
             .collect::<Vec<_>>();
         // If only the peer has any collection items, send them back to the message origin
-        if resp_data.len() > 0 {
+        if !resp_data.is_empty() {
             let response = ListResponse {
                 mode: ListMode::Collection(collection_name),
                 receiver,
@@ -125,7 +126,7 @@ fn respond_with_all_nft_info(sender: mpsc::UnboundedSender<ListResponse>, receiv
     tokio::spawn(async move {
         let nft_info = read_local_nft_info().clone();
         let resp = ListResponse {
-            mode: ListMode::ALL,
+            mode: ListMode::All,
             receiver,
             data: nft_info,
         };
@@ -160,11 +161,11 @@ async fn create_new_nft_info(
     description: &str,
     owner: &str,
 ) -> Result<()> {
-    let mut local_nft_info = read_local_nft_info();
+    let local_nft_info = read_local_nft_info();
 
     local_nft_info.push(NFTInfo {
         collection_name: collection_name.to_owned(),
-        item_id: item_id.clone(),
+        item_id,
         description: description.to_owned(),
         owner: owner.to_owned(),
     });
@@ -179,8 +180,8 @@ async fn create_new_nft_info(
 }
 
 fn read_local_nft_info() -> &'static mut NFTInfoList {
-    // DANGEROUS and may cause errors in multithreaded environments; have to come up with a better solution.
-    return unsafe { &mut NFT_STORE };
+   
+    return unsafe { addr_of_mut!(NFT_STORE).as_mut().unwrap() };
 }
 
 #[tokio::main]
@@ -201,7 +202,7 @@ async fn main() {
         .boxed();
 
     let mut behaviour = NFTInfoBehaviour {
-        floodsub: Floodsub::new(PEER_ID.clone()),
+        floodsub: Floodsub::new(*PEER_ID),
         mdns: Mdns::new(MdnsConfig::default())
             .await
             .expect("can create mdns"),
@@ -298,7 +299,7 @@ async fn handle_list_nft_info(cmd: &str, swarm: &mut Swarm<NFTInfoBehaviour>) {
     match rest {
         Some("ALL") => {
             let req = ListRequest {
-                mode: ListMode::ALL,
+                mode: ListMode::All,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
             swarm
@@ -326,11 +327,11 @@ async fn handle_list_nft_info(cmd: &str, swarm: &mut Swarm<NFTInfoBehaviour>) {
 
 async fn handle_create_nft_info(cmd: &str) {
     if let Some(rest) = cmd.strip_prefix("CREATE NFT ") {
-        let elements: Vec<&str> = rest.split("|").collect();
+        let elements: Vec<&str> = rest.split('|').collect();
         if elements.len() < 3 {
             info!("too few arguments - Format: collection_name|item_id|description|owner");
         } else {
-            let collection_name = elements.get(0).expect("collection name is present");
+            let collection_name = elements.first().expect("collection name is present");
             let item_id = elements
                 .get(1)
                 .expect("item id is present")
